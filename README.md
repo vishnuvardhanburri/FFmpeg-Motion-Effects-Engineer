@@ -1,229 +1,307 @@
 
-# Vishnu — Principal Production Engineer
+# FFmpeg Motion Engine
+**Human-Like Native Motion Effects for Production Pipelines**
 
-**Backend systems • Media pipelines • AI with guardrails • Reliability-first architecture**
-
-I build **production-grade backend systems** where correctness, determinism, and failure handling
-are treated as baseline requirements—not nice-to-haves.
-
-My work focuses on:
-- Backend-first system design
-- Automation and batch pipelines
-- AI-enabled systems with validation and fallbacks
-- Long-term maintainability under real-world failures
-
-This repository highlights two representative projects that reflect how I design, build, and own systems in production.
+Author: **Vishnu**  
+Senior Backend / Production Engineer  
+Focus: FFmpeg motion systems, deterministic rendering, automation reliability
 
 ---
 
-## Project 1: FFmpeg Motion Engine (FME)
+## Project Intent
 
-**Production-Grade Cinematic Motion Using Native FFmpeg Mathematics**
+This project implements a **native FFmpeg motion engine** that produces
+**cinematic, human-like motion** — shake, zoom punches, reverse bursts, and speed ramps —
+using **pure `filter_complex` mathematics**.
 
-FME is a backend motion compiler that generates **human-like cinematic motion**
-(shake, zoom punches, reverse bursts, speed ramps) using **pure FFmpeg `filter_complex` expressions**.
-
-There are no GUIs, timelines, or external render engines.  
-This system is designed for **automation-heavy, high-reliability media pipelines**.
-
-### Why It Matters
-
-Most FFmpeg motion systems fail in production due to:
-- Linear interpolation → robotic motion
-- Hard-coded presets → no adaptability
-- Hidden math → impossible debugging
-- Random behavior → unsafe retries
-
-FME treats motion as a **compiled, deterministic system**.
-
-### Core Guarantees
-- Deterministic output (same input → same frames)
-- Frame-accurate math
-- Explicit, inspectable filtergraphs
-- Safe retries and replays
-- Container-friendly execution
-
-### Motion Model: Attack–Peak–Decay (APD)
-
-Motion is modeled using physically inspired envelopes:
-- **Attack**: smooth acceleration (sine / cubic-bezier)
-- **Peak**: controlled stabilization window
-- **Decay**: exponential or damped falloff
-
-No linear ramps. No velocity discontinuities.
-
-### Example JSON Payload
-
-```json
-{
-  "effect": "zoom_punch",
-  "duration_ms": 420,
-  "amplitude": 0.18,
-  "attack_ms": 80,
-  "peak_ms": 60,
-  "decay_ms": 280,
-  "easing": "sine",
-  "fps": 30
-}
-````
-
-### Generated Filtergraph (Simplified)
-
-```text
-scale=iw*(1+amp*sin(PI*t/dur)*exp(-decay*t)):
-      ih*(1+amp*sin(PI*t/dur)*exp(-decay*t)):
-      eval=frame
-```
-
-### FFmpeg CLI Example
-
-```bash
-ffmpeg -i input.mp4 \
--filter_complex "
-scale=iw*(1+0.18*sin(PI*t/0.42)*exp(-4*t)):
-      ih*(1+0.18*sin(PI*t/0.42)*exp(-4*t)):
-      eval=frame
-" \
--c:v libx264 output.mp4
-```
-
-### Validation & CI
-
-* Strict JSON validation
-* Effect-specific bounds enforcement
-* Determinism tests on filtergraph output
-* Failure injection (invalid payloads never reach FFmpeg)
-
-This engine is designed to run **unattended at scale**.
+The goal is **not visual tricks**.  
+The goal is **repeatable, controllable, production-safe motion** that feels like
+professional After Effects curves while remaining suitable for
+**backend pipelines, batch rendering, and retries**.
 
 ---
 
-## Project 2: Reliable Document Intelligence Pipeline (RDIP)
+## Engineering Approach (Why This Works)
 
-**Backend-First Document Processing with AI Guardrails**
+I treat motion systems the same way I treat backend systems:
 
-RDIP is a production system for **ingesting, validating, and extracting structured data**
-from documents (PDFs, scans, emails) using **deterministic pipelines with AI as a controlled component**.
+- Explicit math, not hidden presets  
+- Deterministic output, not runtime randomness  
+- Clear boundaries and failure handling  
+- Fast iteration without destabilizing production  
 
-This project demonstrates how I design **AI-enabled systems that remain safe under failure**.
+Motion is **compiled**, not animated.
 
-### Why It Matters
+---
 
-Most document automation systems fail because:
-
-* OCR output is noisy
-* LLMs hallucinate silently
-* Business logic is mixed with AI calls
-* Errors surface only downstream
-
-RDIP treats AI as **probabilistic**, never authoritative.
-
-### System Architecture
+## High-Level Flow
 
 ```mermaid
-graph TD
-    A[Document Upload] --> B[Pre-Processing]
-    B --> C[OCR Engine]
-    C --> D[Normalization Layer]
-    D --> E[AI Extraction]
-    E --> F[Validation & Rules Engine]
-    F -->|Valid| G[Structured Output]
-    F -->|Invalid| H[Human Review Queue]
-    G --> I[Audit Log]
+flowchart LR
+  INTENT[Creative Intent]
+  PARAMS[Validated Parameters]
+  APD[Attack → Peak → Decay Envelope]
+  MATH[FFmpeg Math Expressions]
+  FILTER[filter_complex]
+  OUTPUT[Rendered Frames]
+
+  INTENT --> PARAMS
+  PARAMS --> APD
+  APD --> MATH
+  MATH --> FILTER
+  FILTER --> OUTPUT
+````
+
+---
+
+## Motion Model: Attack–Peak–Decay (APD)
+
+```mermaid
+graph LR
+  A[Attack<br/>Ease-in] --> B[Peak<br/>Stabilize]
+  B --> C[Decay<br/>Energy Loss]
 ```
 
-### Key Design Principles
+Why APD:
 
-**AI is not the source of truth**
+* Prevents instant velocity jumps
+* Avoids jitter at max intensity
+* Mimics physical inertia
 
-* AI produces candidates
-* Validation enforces correctness
-* Humans handle irreducible ambiguity
+This is how professional animation tools work — expressed directly in FFmpeg math.
 
-**Explicit state transitions**
+---
 
+## Supported Effects
+
+* **Camera Shake** (micro / medium / heavy, seeded)
+* **Zoom Punch / Zoom Out**
+* **Reverse Burst**
+* **Speed Ramps** (audio-aware, CFR-safe)
+
+---
+
+## Preset Tables
+
+### Camera Shake
+
+| Preset | Amp (px) | Freq (Hz) | Decay | Use           |
+| ------ | -------- | --------- | ----- | ------------- |
+| Micro  | 2–4      | 10–14     | 0.85  | Subtle energy |
+| Medium | 6–10     | 14–18     | 0.75  | Beat hits     |
+| Heavy  | 12–18    | 18–24     | 0.60  | Drops         |
+
+---
+
+### Zoom Punch
+
+| Preset | Amp       | Attack | Peak | Decay | Use           |
+| ------ | --------- | ------ | ---- | ----- | ------------- |
+| Micro  | 0.05–0.08 | 60ms   | 40ms | 220ms | UI hits       |
+| Medium | 0.12–0.18 | 80ms   | 60ms | 280ms | Beat drops    |
+| Heavy  | 0.22–0.30 | 100ms  | 80ms | 360ms | Strong impact |
+
+---
+
+### Speed Ramps
+
+| Preset | Start | Peak  | Attack | Decay | Use         |
+| ------ | ----- | ----- | ------ | ----- | ----------- |
+| Micro  | 0.9×  | 1.15× | 120ms  | 220ms | Subtle lift |
+| Medium | 0.75× | 1.45× | 160ms  | 320ms | Emphasis    |
+| Heavy  | 0.6×  | 1.9×  | 200ms  | 420ms | Drops       |
+
+---
+
+## REAL Demo Clip Commands (Run These)
+
+### 1️⃣ Camera Shake (Medium)
+
+```bash
+ffmpeg -y -i input.mp4 \
+-filter_complex "
+crop=iw:ih:
+x='8*sin(2*PI*16*t)*exp(-0.75*t)':
+y='8*cos(2*PI*16*t)*exp(-0.75*t)'
+" \
+-vsync cfr -c:v libx264 demo_shake_medium.mp4
 ```
-RECEIVED → OCR_COMPLETE → AI_EXTRACTED → VALIDATED → FINALIZED
+
+---
+
+### 2️⃣ Zoom Punch (Impact)
+
+```bash
+ffmpeg -y -i input.mp4 \
+-filter_complex "
+scale=iw*(1+0.15*sin(PI*t/0.42)*exp(-4*t)):
+      ih*(1+0.15*sin(PI*t/0.42)*exp(-4*t)):
+      eval=frame
+" \
+-vsync cfr -c:v libx264 demo_zoom_punch.mp4
 ```
 
-**Idempotent by design**
+---
 
-* Safe retries
-* Reprocessing without duplication
-* Deterministic outcomes
+### 3️⃣ Reverse Burst
 
-### Example AI Output Contract
+```bash
+ffmpeg -y -i input.mp4 \
+-filter_complex "
+scale=iw*(1-0.12*sin(PI*t/0.35)*exp(-3.5*t)):
+      ih*(1-0.12*sin(PI*t/0.35)*exp(-3.5*t)):
+      eval=frame
+" \
+-vsync cfr -c:v libx264 demo_reverse_burst.mp4
+```
 
-```json
-{
-  "invoice_number": "INV-0182",
-  "invoice_date": "2024-11-12",
-  "vendor_name": "Acme Supplies Ltd",
-  "total_amount": 1834.50,
-  "currency": "USD"
+---
+
+### 4️⃣ Speed Ramp (Medium, Audio-Safe)
+
+```bash
+ffmpeg -y -i input.mp4 \
+-filter_complex "
+[0:v]setpts='PTS/(0.75+0.7*sin(PI*t/0.9)*exp(-2*t))'[v];
+[0:a]atempo=1.1[a]
+" \
+-map "[v]" -map "[a]" -vsync cfr -c:v libx264 demo_speed_ramp.mp4
+```
+
+---
+
+## Audio-Aware Speed Ramp Handling
+
+Rules followed:
+
+* Video time is remapped explicitly
+* Audio is never implicitly resampled
+* `atempo` is clamped (0.5–2.0)
+* No chained aggressive ramps
+
+Production default:
+
+* **Aggressive video ramp**
+* **Mild audio stretch**
+* Musicality preserved
+
+---
+
+## CFR vs VFR (Critical Notes)
+
+### CFR — Required
+
+```bash
+-vsync cfr -r 30
+```
+
+Why:
+
+* Stable `t` evaluation
+* Predictable envelopes
+* No drift
+
+### VFR — Normalize First
+
+Problems with VFR:
+
+* Uneven motion
+* Envelope distortion
+* Audio desync
+
+Fix:
+
+```bash
+-filter_complex "fps=30"
+```
+
+**Rule:** Never apply motion math directly to raw VFR input.
+
+---
+
+## Preview Harness
+
+```bash
+./render_test.sh shake medium
+./render_test.sh zoom_punch heavy
+./render_test.sh speed_ramp medium
+```
+
+Used for fast iteration without touching production code.
+
+---
+
+## Node.js Backend Wrapper (Example)
+
+```ts
+import { spawn } from "child_process";
+
+export function runFFmpeg(input: string, output: string, filter: string) {
+  return new Promise<void>((resolve, reject) => {
+    const p = spawn("ffmpeg", [
+      "-y", "-i", input,
+      "-filter_complex", filter,
+      "-vsync", "cfr",
+      "-c:v", "libx264",
+      output
+    ]);
+
+    p.on("exit", c => c === 0 ? resolve() : reject(new Error("ffmpeg failed")));
+  });
 }
 ```
 
-### Validation Rules (Examples)
-
-* Dates cannot be in the future
-* Totals must be positive
-* Currency must match vendor profile
-* Line-item sum must equal invoice total
-
-Failures route to **human review**, never silent acceptance.
-
-### Failure Injection & CI
-
-* Simulated OCR noise
-* AI hallucination tests
-* Retry safety checks
-* Deterministic replays
-
-Designed for **finance, operations, and compliance-heavy workflows**.
+* Stateless
+* Deterministic
+* Retry-safe
+* Backend-friendly
 
 ---
 
-## Engineering Philosophy
+## Failure & Edge-Case Notes (Important)
 
-I design systems assuming:
+Handled explicitly:
 
-* Upstream inputs will be wrong
-* Downstream dependencies will fail
-* Scale will arrive earlier than expected
-* Someone else will debug this at 3 AM
+* **Very short clips** → envelope auto-clamps
+* **Extreme amplitudes** → rejected or clamped
+* **Dropped frames** → CFR normalization
+* **Retry renders** → identical output
+* **Seeded motion** → no random drift
+* **FFmpeg crash** → safe retry, no partial state
 
-I prioritize:
-
-* Explicit contracts over magic
-* Determinism over cleverness
-* Reliability over demos
-* Long-term maintainability over shortcuts
+Nothing fails silently.
 
 ---
 
-## Ideal Client Use Cases
+## What This Is NOT
 
-* Automated video or media pipelines
-* Backend-heavy products with real business risk
-* AI systems that must be validated, not trusted blindly
-* Legacy automation that needs stabilization
-* Systems that must survive audits and scale
+* Not FFmpeg vibrate
+* Not random jitter
+* Not linear keyframes
+* Not GUI editing
+
+This is a **production motion engine**, not a demo.
+
+---
+
+## Ideal Use Cases
+
+* Short-form automation (TikTok / Reels / Phonk)
+* Programmatic highlight generation
+* AI video post-processing
+* Batch rendering pipelines
 
 ---
 
 ## Author
 
 **Vishnu**
-Principal Production Engineer
+Senior Backend / Production Engineer
 
-Backend systems • Media pipelines • AI validation • Automation reliability
+FFmpeg • Motion Systems • Automation Reliability
 
 ---
 
 ## License
 
 MIT
-
-```
-
