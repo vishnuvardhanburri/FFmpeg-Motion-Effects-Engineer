@@ -8,76 +8,98 @@ Focus: FFmpeg motion systems, deterministic rendering, automation reliability
 
 ---
 
-## Project Intent
+## Project Overview
 
-This project implements a **native FFmpeg motion engine** that produces
-**cinematic, human-like motion** — shake, zoom punches, reverse bursts, and speed ramps —
+This project delivers a **reusable, production-grade FFmpeg motion engine** capable of
+producing **human-like camera motion** — shake, zoom punches, reverse bursts, and speed ramps —
 using **pure `filter_complex` mathematics**.
 
-The goal is **not visual tricks**.  
-The goal is **repeatable, controllable, production-safe motion** that feels like
-professional After Effects curves while remaining suitable for
-**backend pipelines, batch rendering, and retries**.
+The system is designed for **backend-driven video pipelines**, not manual editing.
+All motion is **deterministic, parameterized, previewable, and safe to retry**.
+
+The objective is to match **After Effects–quality motion curves** while remaining
+fully native to FFmpeg and suitable for automation.
 
 ---
 
-## Engineering Approach (Why This Works)
+## Core Problem This Solves
 
-I treat motion systems the same way I treat backend systems:
+Most FFmpeg motion implementations fail because they rely on:
+- Linear interpolation
+- Random jitter
+- Hard-coded presets
+- No envelope control
+- No retry safety
 
-- Explicit math, not hidden presets  
-- Deterministic output, not runtime randomness  
-- Clear boundaries and failure handling  
-- Fast iteration without destabilizing production  
-
-Motion is **compiled**, not animated.
+This engine solves that by treating motion as a **compiled system**, not a visual effect.
 
 ---
 
-## High-Level Flow
+## High-Level Architecture
 
 ```mermaid
 flowchart LR
-  INTENT[Creative Intent]
-  PARAMS[Validated Parameters]
-  APD[Attack → Peak → Decay Envelope]
-  MATH[FFmpeg Math Expressions]
-  FILTER[filter_complex]
-  OUTPUT[Rendered Frames]
+  CLIENT[Backend / API]
+  CONFIG[Motion Config<br/>(JSON)]
+  VALIDATE[Validation Layer]
+  ENGINE[Motion Engine<br/>(APD Compiler)]
+  FF[FFmpeg filter_complex]
+  OUTPUT[Rendered Clip]
+  LOGS[Logs / Metrics]
 
-  INTENT --> PARAMS
-  PARAMS --> APD
-  APD --> MATH
-  MATH --> FILTER
-  FILTER --> OUTPUT
+  CLIENT --> CONFIG
+  CONFIG --> VALIDATE
+  VALIDATE --> ENGINE
+  ENGINE --> FF
+  FF --> OUTPUT
+  ENGINE --> LOGS
 ````
+
+### Architectural Principles
+
+* No hidden state
+* No runtime randomness
+* No GUI dependencies
+* Deterministic math only
+* Safe retries by design
 
 ---
 
-## Motion Model: Attack–Peak–Decay (APD)
+## Motion Engine Design
+
+### Attack–Peak–Decay (APD) Envelope
 
 ```mermaid
 graph LR
-  A[Attack<br/>Ease-in] --> B[Peak<br/>Stabilize]
-  B --> C[Decay<br/>Energy Loss]
+  A[Attack<br/>Ease-in] --> B[Peak<br/>Hold]
+  B --> C[Decay<br/>Settle]
 ```
 
 Why APD:
 
 * Prevents instant velocity jumps
-* Avoids jitter at max intensity
+* Stabilizes impact frames
 * Mimics physical inertia
 
-This is how professional animation tools work — expressed directly in FFmpeg math.
+This is the same concept used in professional animation tools,
+implemented directly in FFmpeg math.
 
 ---
 
-## Supported Effects
+## Supported Motion Effects
 
-* **Camera Shake** (micro / medium / heavy, seeded)
+* **Camera Shake** (micro / medium / heavy)
 * **Zoom Punch / Zoom Out**
 * **Reverse Burst**
 * **Speed Ramps** (audio-aware, CFR-safe)
+
+All effects support:
+
+* Duration
+* Intensity
+* Seeded variation
+* Presets
+* Consistent behavior across clip lengths
 
 ---
 
@@ -85,7 +107,7 @@ This is how professional animation tools work — expressed directly in FFmpeg m
 
 ### Camera Shake
 
-| Preset | Amp (px) | Freq (Hz) | Decay | Use           |
+| Preset | Amp (px) | Freq (Hz) | Decay | Use Case      |
 | ------ | -------- | --------- | ----- | ------------- |
 | Micro  | 2–4      | 10–14     | 0.85  | Subtle energy |
 | Medium | 6–10     | 14–18     | 0.75  | Beat hits     |
@@ -95,27 +117,27 @@ This is how professional animation tools work — expressed directly in FFmpeg m
 
 ### Zoom Punch
 
-| Preset | Amp       | Attack | Peak | Decay | Use           |
-| ------ | --------- | ------ | ---- | ----- | ------------- |
-| Micro  | 0.05–0.08 | 60ms   | 40ms | 220ms | UI hits       |
-| Medium | 0.12–0.18 | 80ms   | 60ms | 280ms | Beat drops    |
-| Heavy  | 0.22–0.30 | 100ms  | 80ms | 360ms | Strong impact |
+| Preset | Amp       | Attack | Peak | Decay | Use        |
+| ------ | --------- | ------ | ---- | ----- | ---------- |
+| Micro  | 0.05–0.08 | 60ms   | 40ms | 220ms | UI hits    |
+| Medium | 0.12–0.18 | 80ms   | 60ms | 280ms | Beat drops |
+| Heavy  | 0.22–0.30 | 100ms  | 80ms | 360ms | Impact     |
 
 ---
 
 ### Speed Ramps
 
-| Preset | Start | Peak  | Attack | Decay | Use         |
-| ------ | ----- | ----- | ------ | ----- | ----------- |
-| Micro  | 0.9×  | 1.15× | 120ms  | 220ms | Subtle lift |
-| Medium | 0.75× | 1.45× | 160ms  | 320ms | Emphasis    |
-| Heavy  | 0.6×  | 1.9×  | 200ms  | 420ms | Drops       |
+| Preset | Start | Peak  | Attack | Decay | Use      |
+| ------ | ----- | ----- | ------ | ----- | -------- |
+| Micro  | 0.9×  | 1.15× | 120ms  | 220ms | Lift     |
+| Medium | 0.75× | 1.45× | 160ms  | 320ms | Emphasis |
+| Heavy  | 0.6×  | 1.9×  | 200ms  | 420ms | Drops    |
 
 ---
 
-## REAL Demo Clip Commands (Run These)
+## REAL Demo Commands
 
-### 1️⃣ Camera Shake (Medium)
+### Camera Shake (Medium)
 
 ```bash
 ffmpeg -y -i input.mp4 \
@@ -123,13 +145,12 @@ ffmpeg -y -i input.mp4 \
 crop=iw:ih:
 x='8*sin(2*PI*16*t)*exp(-0.75*t)':
 y='8*cos(2*PI*16*t)*exp(-0.75*t)'
-" \
--vsync cfr -c:v libx264 demo_shake_medium.mp4
+" -vsync cfr -c:v libx264 demo_shake.mp4
 ```
 
 ---
 
-### 2️⃣ Zoom Punch (Impact)
+### Zoom Punch
 
 ```bash
 ffmpeg -y -i input.mp4 \
@@ -137,59 +158,26 @@ ffmpeg -y -i input.mp4 \
 scale=iw*(1+0.15*sin(PI*t/0.42)*exp(-4*t)):
       ih*(1+0.15*sin(PI*t/0.42)*exp(-4*t)):
       eval=frame
-" \
--vsync cfr -c:v libx264 demo_zoom_punch.mp4
+" -vsync cfr -c:v libx264 demo_zoom.mp4
 ```
 
 ---
 
-### 3️⃣ Reverse Burst
-
-```bash
-ffmpeg -y -i input.mp4 \
--filter_complex "
-scale=iw*(1-0.12*sin(PI*t/0.35)*exp(-3.5*t)):
-      ih*(1-0.12*sin(PI*t/0.35)*exp(-3.5*t)):
-      eval=frame
-" \
--vsync cfr -c:v libx264 demo_reverse_burst.mp4
-```
-
----
-
-### 4️⃣ Speed Ramp (Medium, Audio-Safe)
+### Speed Ramp (Audio-Aware)
 
 ```bash
 ffmpeg -y -i input.mp4 \
 -filter_complex "
 [0:v]setpts='PTS/(0.75+0.7*sin(PI*t/0.9)*exp(-2*t))'[v];
 [0:a]atempo=1.1[a]
-" \
--map "[v]" -map "[a]" -vsync cfr -c:v libx264 demo_speed_ramp.mp4
+" -map "[v]" -map "[a]" -vsync cfr -c:v libx264 demo_speed.mp4
 ```
 
 ---
 
-## Audio-Aware Speed Ramp Handling
+## Audio & Frame-Rate Handling
 
-Rules followed:
-
-* Video time is remapped explicitly
-* Audio is never implicitly resampled
-* `atempo` is clamped (0.5–2.0)
-* No chained aggressive ramps
-
-Production default:
-
-* **Aggressive video ramp**
-* **Mild audio stretch**
-* Musicality preserved
-
----
-
-## CFR vs VFR (Critical Notes)
-
-### CFR — Required
+### CFR Required
 
 ```bash
 -vsync cfr -r 30
@@ -201,21 +189,14 @@ Why:
 * Predictable envelopes
 * No drift
 
-### VFR — Normalize First
+### VFR Inputs
 
-Problems with VFR:
-
-* Uneven motion
-* Envelope distortion
-* Audio desync
-
-Fix:
+* Must be normalized
+* Never apply motion directly to raw VFR
 
 ```bash
 -filter_complex "fps=30"
 ```
-
-**Rule:** Never apply motion math directly to raw VFR input.
 
 ---
 
@@ -227,11 +208,11 @@ Fix:
 ./render_test.sh speed_ramp medium
 ```
 
-Used for fast iteration without touching production code.
+Used to tune motion safely before production.
 
 ---
 
-## Node.js Backend Wrapper (Example)
+## Node.js Backend Integration
 
 ```ts
 import { spawn } from "child_process";
@@ -245,31 +226,54 @@ export function runFFmpeg(input: string, output: string, filter: string) {
       "-c:v", "libx264",
       output
     ]);
-
-    p.on("exit", c => c === 0 ? resolve() : reject(new Error("ffmpeg failed")));
+    p.on("exit", c => c === 0 ? resolve() : reject());
   });
 }
 ```
 
-* Stateless
-* Deterministic
-* Retry-safe
-* Backend-friendly
+Stateless, deterministic, retry-safe.
 
 ---
 
-## Failure & Edge-Case Notes (Important)
+## Failure & Edge-Case Handling
 
-Handled explicitly:
+Explicitly handled:
 
-* **Very short clips** → envelope auto-clamps
-* **Extreme amplitudes** → rejected or clamped
-* **Dropped frames** → CFR normalization
-* **Retry renders** → identical output
-* **Seeded motion** → no random drift
-* **FFmpeg crash** → safe retry, no partial state
+* Very short clips → envelope clamps
+* Extreme values → validated / rejected
+* Dropped frames → CFR enforced
+* Retries → identical output
+* Seeded motion → no drift
+* FFmpeg failure → safe retry
 
-Nothing fails silently.
+No silent failures.
+
+---
+
+## Execution Plan (How This Will Be Delivered)
+
+### Phase 1 – Motion Core (Week 1)
+
+* Implement APD envelope compiler
+* Shake + zoom punch
+* Preset definitions
+* Preview harness
+
+### Phase 2 – Advanced Motion (Week 2)
+
+* Reverse bursts
+* Speed ramps (audio-aware)
+* Parameter validation
+* Backend integration hooks
+
+### Phase 3 – Hardening (Week 3)
+
+* Edge-case handling
+* CFR/VFR normalization
+* Performance tuning
+* Documentation & presets
+
+Outcome: **production-ready motion engine**, not a demo.
 
 ---
 
@@ -280,16 +284,16 @@ Nothing fails silently.
 * Not linear keyframes
 * Not GUI editing
 
-This is a **production motion engine**, not a demo.
+This is a **backend motion system**.
 
 ---
 
 ## Ideal Use Cases
 
 * Short-form automation (TikTok / Reels / Phonk)
-* Programmatic highlight generation
-* AI video post-processing
-* Batch rendering pipelines
+* Programmatic highlights
+* AI video pipelines
+* Batch rendering systems
 
 ---
 
@@ -305,3 +309,4 @@ FFmpeg • Motion Systems • Automation Reliability
 ## License
 
 MIT
+
